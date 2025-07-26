@@ -177,6 +177,12 @@ func runLiveReload(green, yellow, red, cyan func(a ...interface{}) string) {
 			return
 		}
 
+		// Pastikan binary ada setelah build
+		if _, err := os.Stat(config.CommandArgs[0]); os.IsNotExist(err) {
+			fmt.Println(red("Error: Binary ", config.CommandArgs[0], " was not created by build"))
+			return
+		}
+
 		// Jalankan binary
 		fmt.Println(green("Running ", config.BinaryName))
 		cmd = exec.Command(config.CommandArgs[0], config.CommandArgs[1:]...)
@@ -247,9 +253,6 @@ func validateConfig(config *Config) error {
 	}
 	if len(config.CommandArgs) == 0 {
 		return fmt.Errorf("command_args cannot be empty")
-	}
-	if _, err := os.Stat(config.CommandArgs[0]); os.IsNotExist(err) {
-		return fmt.Errorf("binary %s does not exist", config.CommandArgs[0])
 	}
 	return nil
 }
