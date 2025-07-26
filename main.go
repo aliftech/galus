@@ -25,7 +25,7 @@ const banner = `
 `
 
 // Version aplikasi
-const version = "1.0.0"
+const version = "0.1.0"
 
 // Config menyimpan pengaturan dari file .galus.toml
 type Config struct {
@@ -130,6 +130,17 @@ func runLiveReload(green, yellow, red, cyan func(a ...interface{}) string) {
 		os.Exit(1)
 	}
 
+	// Periksa apakah ada file Go di direktori proyek
+	hasGoFiles, err := checkGoFiles(config.RootDir)
+	if err != nil {
+		fmt.Println(red("Error checking Go files: ", err))
+		os.Exit(1)
+	}
+	if !hasGoFiles {
+		fmt.Println(red("Error: No .go files found in ", config.RootDir))
+		os.Exit(1)
+	}
+
 	// Buat direktori sementara jika belum ada
 	if err := os.MkdirAll(config.TmpDir, 0755); err != nil {
 		fmt.Println(red("Error creating tmp directory: ", err))
@@ -170,16 +181,11 @@ func runLiveReload(green, yellow, red, cyan func(a ...interface{}) string) {
 		fmt.Println(yellow("Building..."))
 		args := strings.Fields(config.BuildCmd)
 		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		// Tangkap output error untuk debugging
+		output, err := cmd.CombinedOutput()
+		if err != nil {
 			fmt.Println(red("Build failed: ", err))
-			return
-		}
-
-		// Pastikan binary ada setelah build
-		if _, err := os.Stat(config.CommandArgs[0]); os.IsNotExist(err) {
-			fmt.Println(red("Error: Binary ", config.CommandArgs[0], " was not created by build"))
+			fmt.Println(red("Build output: ", string(output)))
 			return
 		}
 
@@ -255,6 +261,21 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("command_args cannot be empty")
 	}
 	return nil
+}
+
+// checkGoFiles memeriksa apakah ada file .go di direktori yang ditentukan
+func checkGoFiles(rootDir string) (bool, error) {
+	hasGoFiles := false
+	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(strings.ToLower(info.Name()), ".go") {
+			hasGoFiles = true
+		}
+		return nil
+	})
+	return hasGoFiles, err
 }
 
 // isIncludedExt memeriksa apakah file memiliki ekstensi yang diizinkan
