@@ -15,7 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Banner ASCII art untuk Galus
 const banner = `
    ____   _____  __      _    _   ______
   / ___| |___  ||  |    | |  | | |   ___|
@@ -24,10 +23,8 @@ const banner = `
   \____||______||______| \____/  |_____ |
 `
 
-// Version aplikasi
-const version = "0.1.0"
+const version = "1.0.0"
 
-// Config menyimpan pengaturan dari file .galus.toml
 type Config struct {
 	RootDir     string   `toml:"root_dir"`
 	TmpDir      string   `toml:"tmp_dir"`
@@ -38,7 +35,6 @@ type Config struct {
 	CommandArgs []string `toml:"command_args"`
 }
 
-// DefaultConfig adalah template konfigurasi default untuk .galus.toml
 const defaultConfig = `
 root_dir = "."
 tmp_dir = "tmp"
@@ -50,66 +46,58 @@ command_args = ["tmp/main"]
 `
 
 func main() {
-	// Inisialisasi warna untuk output
 	green := color.New(color.FgGreen).SprintFunc()
 	yellow := color.New(color.FgYellow).SprintFunc()
 	red := color.New(color.FgRed).SprintFunc()
 	cyan := color.New(color.FgCyan).SprintFunc()
 
-	// Inisialisasi root command dengan Cobra
 	rootCmd := &cobra.Command{
 		Use:   "galus",
 		Short: "Galus - Live Reloading for Go Applications",
-		Long:  fmt.Sprintf("%s\n%s\n\nA live reloading tool for Go applications, similar to Air or CompileDaemon.", cyan(banner), cyan("Galus - Live Reloading for Go Applications")),
+		Long:  fmt.Sprintf("%s\n%s", cyan(banner), cyan("Galus - Live Reloading for Go Applications")),
 		Run: func(cmd *cobra.Command, args []string) {
 			runLiveReload(green, yellow, red, cyan)
 		},
 	}
 
-	// Perintah init
 	initCmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create a default .galus.toml configuration file",
 		Run: func(cmd *cobra.Command, args []string) {
 			configFile := ".galus.toml"
 			if _, err := os.Stat(configFile); err == nil {
-				fmt.Println(red("Error: Config file already exists: ", configFile))
+				fmt.Println(red("Error: Config file already exists:", configFile))
 				os.Exit(1)
 			}
-			err := os.WriteFile(configFile, []byte(defaultConfig), 0644)
-			if err != nil {
-				fmt.Println(red("Error creating config file: ", err))
+			if err := os.WriteFile(configFile, []byte(defaultConfig), 0644); err != nil {
+				fmt.Println(red("Error creating config file:", err))
 				os.Exit(1)
 			}
-			fmt.Println(green("Created config file: ", configFile))
+			fmt.Println(green("Created config file:", configFile))
 		},
 	}
 
-	// Perintah version
 	versionCmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the version of Galus",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println(green("Galus version: ", version))
+			fmt.Println(green("Galus version:", version))
 		},
 	}
 
-	// Tambahkan subcommands ke root command
 	rootCmd.AddCommand(initCmd, versionCmd)
 
-	// Jalankan root command
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(red("Error: ", err))
+		fmt.Println(red("Error:", err))
 		os.Exit(1)
 	}
 }
 
 func runLiveReload(green, yellow, red, cyan func(a ...interface{}) string) {
-	// Mode live reload: baca file konfigurasi .galus.toml
 	config := Config{
-		RootDir:     ".",            // Default: direktori saat ini
-		TmpDir:      "tmp",          // Default: direktori sementara
-		IncludeExt:  []string{"go"}, // Default: hanya file .go
+		RootDir:     ".",
+		TmpDir:      "tmp",
+		IncludeExt:  []string{"go"},
 		ExcludeDir:  []string{".git", "vendor", "tmp"},
 		BuildCmd:    "go build -o ./tmp/main .",
 		BinaryName:  "tmp/main",
@@ -119,92 +107,85 @@ func runLiveReload(green, yellow, red, cyan func(a ...interface{}) string) {
 	configFile := ".galus.toml"
 	if _, err := os.Stat(configFile); err == nil {
 		if _, err := toml.DecodeFile(configFile, &config); err != nil {
-			fmt.Println(red("Error reading config file: ", err))
+			fmt.Println(red("Error reading config file:", err))
 			os.Exit(1)
 		}
 	}
 
-	// Validasi konfigurasi
 	if err := validateConfig(&config); err != nil {
-		fmt.Println(red("Configuration error: ", err))
+		fmt.Println(red("Configuration error:", err))
 		os.Exit(1)
 	}
 
-	// Periksa apakah ada file Go di direktori proyek
 	hasGoFiles, err := checkGoFiles(config.RootDir)
 	if err != nil {
-		fmt.Println(red("Error checking Go files: ", err))
+		fmt.Println(red("Error checking Go files:", err))
 		os.Exit(1)
 	}
 	if !hasGoFiles {
-		fmt.Println(red("Error: No .go files found in ", config.RootDir))
+		fmt.Println(red("Error: No .go files found in", config.RootDir))
 		os.Exit(1)
 	}
 
-	// Buat direktori sementara jika belum ada
 	if err := os.MkdirAll(config.TmpDir, 0755); err != nil {
-		fmt.Println(red("Error creating tmp directory: ", err))
+		fmt.Println(red("Error creating tmp directory:", err))
 		os.Exit(1)
 	}
 
-	// Membuat watcher untuk memantau perubahan file
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		fmt.Println(red("Error creating watcher: ", err))
+		fmt.Println(red("Error creating watcher:", err))
 		os.Exit(1)
 	}
 	defer watcher.Close()
 
-	// Variabel untuk menyimpan proses yang sedang berjalan
 	var currentProcess *exec.Cmd
 
-	// Fungsi untuk mengompilasi dan menjalankan ulang
 	rebuildAndRun := func() {
-		// Hentikan proses yang sedang berjalan dengan SIGTERM (jika ada)
 		if currentProcess != nil && currentProcess.Process != nil {
 			fmt.Println(yellow("Stopping current process..."))
 			currentProcess.Process.Signal(syscall.SIGTERM)
-			// Berikan waktu 5 detik untuk proses berhenti
 			done := make(chan error, 1)
-			go func() {
-				done <- currentProcess.Wait()
-			}()
+			go func() { done <- currentProcess.Wait() }()
 			select {
 			case <-time.After(5 * time.Second):
-				fmt.Println(red("Process did not stop in time, killing..."))
+				fmt.Println(red("Force killing process..."))
 				currentProcess.Process.Kill()
 			case <-done:
 			}
 		}
 
-		// Kompilasi ulang kode
 		fmt.Println(yellow("Building..."))
 		args := strings.Fields(config.BuildCmd)
 		cmd := exec.Command(args[0], args[1:]...)
-		// Tangkap output error untuk debugging
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			fmt.Println(red("Build failed: ", err))
-			fmt.Println(red("Build output: ", string(output)))
+			fmt.Println(red("Build failed:", err))
+			fmt.Println(red("Build output:", string(output)))
 			return
 		}
 
-		// Jalankan binary
-		fmt.Println(green("Running ", config.BinaryName))
+		fmt.Println(green("Running:", config.CommandArgs[0]))
 		cmd = exec.Command(config.CommandArgs[0], config.CommandArgs[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		currentProcess = cmd
 		if err := cmd.Start(); err != nil {
-			fmt.Println(red("Failed to start process: ", err))
+			fmt.Println(red("Failed to start process:", err))
 			return
 		}
 	}
 
-	// Jalankan kompilasi dan eksekusi pertama kali
+	// Auto build binary first if it doesn't exist
+	if _, err := os.Stat(config.BinaryName); os.IsNotExist(err) {
+		fmt.Println(yellow("Binary not found, performing initial build..."))
+		rebuildAndRun()
+	}
+
+	// Initial run regardless
+	fmt.Println(yellow("Initial run..."))
 	rebuildAndRun()
 
-	// Memantau perubahan file
 	go func() {
 		for {
 			select {
@@ -212,10 +193,8 @@ func runLiveReload(green, yellow, red, cyan func(a ...interface{}) string) {
 				if !ok {
 					return
 				}
-				// Hanya tangani perubahan pada file dengan ekstensi yang diizinkan
 				if isIncludedExt(event.Name, config.IncludeExt) && (event.Op&fsnotify.Write == fsnotify.Write) {
-					fmt.Println(cyan("File changed: ", event.Name))
-					// Tunggu sebentar untuk menghindari multiple trigger
+					fmt.Println(cyan("File changed:", event.Name))
 					time.Sleep(100 * time.Millisecond)
 					rebuildAndRun()
 				}
@@ -223,33 +202,29 @@ func runLiveReload(green, yellow, red, cyan func(a ...interface{}) string) {
 				if !ok {
 					return
 				}
-				fmt.Println(red("Error: ", err))
+				fmt.Println(red("Watcher error:", err))
 			}
 		}
 	}()
 
-	// Tambahkan direktori yang akan dipantau
 	err = filepath.Walk(config.RootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		// Tambahkan hanya direktori, abaikan direktori yang dikecualikan
 		if info.IsDir() && !isExcludedDir(path, config.ExcludeDir) {
 			return watcher.Add(path)
 		}
 		return nil
 	})
 	if err != nil {
-		fmt.Println(red("Error walking directory: ", err))
+		fmt.Println(red("Error walking directory:", err))
 		os.Exit(1)
 	}
 
-	fmt.Println(green("Watching for changes in ", config.RootDir))
-	// Jaga agar program tetap berjalan
-	<-make(chan struct{})
+	fmt.Println(green("Watching for changes in", config.RootDir))
+	<-make(chan struct{}) // Block forever
 }
 
-// validateConfig memeriksa apakah konfigurasi valid
 func validateConfig(config *Config) error {
 	if config.BuildCmd == "" {
 		return fmt.Errorf("build_cmd cannot be empty")
@@ -263,7 +238,6 @@ func validateConfig(config *Config) error {
 	return nil
 }
 
-// checkGoFiles memeriksa apakah ada file .go di direktori yang ditentukan
 func checkGoFiles(rootDir string) (bool, error) {
 	hasGoFiles := false
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
@@ -278,7 +252,6 @@ func checkGoFiles(rootDir string) (bool, error) {
 	return hasGoFiles, err
 }
 
-// isIncludedExt memeriksa apakah file memiliki ekstensi yang diizinkan
 func isIncludedExt(name string, exts []string) bool {
 	for _, ext := range exts {
 		if strings.HasSuffix(strings.ToLower(name), "."+strings.ToLower(ext)) {
@@ -288,7 +261,6 @@ func isIncludedExt(name string, exts []string) bool {
 	return false
 }
 
-// isExcludedDir memeriksa apakah direktori termasuk dalam daftar yang dikecualikan
 func isExcludedDir(path string, excludeDirs []string) bool {
 	for _, dir := range excludeDirs {
 		if strings.Contains(path, dir) {
