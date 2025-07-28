@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -36,10 +37,19 @@ func main() {
 				fmt.Println(red("Error: Config file already exists:", configFile))
 				os.Exit(1)
 			}
-			if err := os.WriteFile(configFile, []byte(dto.DefaultConfig), 0644); err != nil {
-				fmt.Println(red("Error creating config file:", err))
-				os.Exit(1)
+
+			if runtime.GOOS == "windows" {
+				if err := os.WriteFile(configFile, []byte(dto.DefaultConfigWindows), 0644); err != nil {
+					fmt.Println(red("Error creating config file:", err))
+					os.Exit(1)
+				}
+			} else {
+				if err := os.WriteFile(configFile, []byte(dto.DefaultConfigUnix), 0644); err != nil {
+					fmt.Println(red("Error creating config file:", err))
+					os.Exit(1)
+				}
 			}
+
 			fmt.Println(green("Created config file:", configFile))
 		},
 	}
